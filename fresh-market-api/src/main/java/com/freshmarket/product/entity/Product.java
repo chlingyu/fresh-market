@@ -77,6 +77,11 @@ public class Product {
     @Schema(description = "更新时间")
     private Instant updatedAt;
 
+    @Version
+    @Column(nullable = false)
+    @Schema(description = "乐观锁版本号")
+    private Long version;
+
     @PrePersist
     protected void onCreate() {
         this.createdAt = Instant.now();
@@ -194,6 +199,14 @@ public class Product {
 
     public void setUpdatedAt(Instant updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public void setVersion(Long version) {
+        this.version = version;
     }
 
     @Override

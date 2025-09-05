@@ -86,4 +86,21 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     @Modifying
     @Query("UPDATE Product p SET p.stock = p.stock + :quantity WHERE p.id = :id")
     int increaseStock(@Param("id") Long id, @Param("quantity") Integer quantity);
+
+    /**
+     * 原子性扣减库存（带版本检查）
+     * 防止超卖问题，同时检查库存充足和版本一致性
+     */
+    @Modifying
+    @Query("UPDATE Product p SET p.stock = p.stock - :quantity, p.version = p.version + 1 " +
+           "WHERE p.id = :id AND p.stock >= :quantity AND p.version = :version AND p.active = true")
+    int decreaseStockWithVersion(@Param("id") Long id, @Param("quantity") Integer quantity, @Param("version") Long version);
+
+    /**
+     * 原子性恢复库存（带版本检查）
+     */
+    @Modifying
+    @Query("UPDATE Product p SET p.stock = p.stock + :quantity, p.version = p.version + 1 " +
+           "WHERE p.id = :id AND p.version = :version")
+    int increaseStockWithVersion(@Param("id") Long id, @Param("quantity") Integer quantity, @Param("version") Long version);
 }

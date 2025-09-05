@@ -15,6 +15,10 @@ public class UserPrincipal implements Principal {
         this.username = username;
     }
     
+    public Long getId() {
+        return userId;
+    }
+    
     public Long getUserId() {
         return userId;
     }

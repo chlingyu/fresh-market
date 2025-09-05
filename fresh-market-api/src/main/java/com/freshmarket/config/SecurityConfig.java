@@ -14,6 +14,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.http.HttpMethod;
 
 /**
  * Spring Security 配置
@@ -48,18 +49,45 @@ public class SecurityConfig {
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(jwtAuthenticationEntryPoint))
             .authorizeHttpRequests(auth -> auth
-                // 公开API
+                // 用户认证相关 - 公开访问
                 .requestMatchers(
                     "/api/v1/users/register",
-                    "/api/v1/users/login",
-                    "/api/v1/products/**",
-                    "/api/v1/categories/**"
+                    "/api/v1/users/login"
                 ).permitAll()
                 
-                // Actuator端点
-                .requestMatchers("/actuator/**").permitAll()
+                // 商品查询 - 仅允许GET请求公开访问
+                .requestMatchers(HttpMethod.GET, "/api/v1/products/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/categories/**").permitAll()
                 
-                // OpenAPI文档
+                // 商品管理 - 需要管理员权限
+                .requestMatchers(HttpMethod.POST, "/api/v1/products/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.PUT, "/api/v1/products/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.DELETE, "/api/v1/products/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.POST, "/api/v1/categories/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.PUT, "/api/v1/categories/**").hasRole("ADMIN")
+                .requestMatchers(HttpMethod.DELETE, "/api/v1/categories/**").hasRole("ADMIN")
+                
+                // 订单相关 - 需要用户认证，用户只能访问自己的订单
+                .requestMatchers("/api/v1/orders/**").hasRole("USER")
+                
+                // 支付相关 - 需要用户认证
+                .requestMatchers("/api/v1/payments/**").hasRole("USER")
+                
+                // 用户个人信息 - 需要用户认证
+                .requestMatchers("/api/v1/users/profile/**").hasRole("USER")
+                .requestMatchers("/api/v1/users/addresses/**").hasRole("USER")
+                
+                // 用户管理 - 需要管理员权限
+                .requestMatchers("/api/v1/users/admin/**").hasRole("ADMIN")
+                
+                // 购物车 - 需要用户认证
+                .requestMatchers("/api/v1/cart/**").hasRole("USER")
+                
+                // Actuator端点 - 限制访问，只允许管理员
+                .requestMatchers("/actuator/health").permitAll()
+                .requestMatchers("/actuator/**").hasRole("ADMIN")
+                
+                // OpenAPI文档 - 开发环境开放，生产环境应该限制
                 .requestMatchers(
                     "/api-docs/**",
                     "/swagger-ui/**",

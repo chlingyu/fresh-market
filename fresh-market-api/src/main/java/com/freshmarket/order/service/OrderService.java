@@ -5,7 +5,9 @@ import com.freshmarket.order.dto.CreateOrderRequest;
 import com.freshmarket.order.dto.OrderItemResponse;
 import com.freshmarket.order.dto.OrderResponse;
 import com.freshmarket.order.dto.OrderSearchRequest;
+import com.freshmarket.order.dto.OrderSummaryDto;
 import com.freshmarket.order.entity.Order;
+import com.freshmarket.order.mapper.OrderMapper;
 import com.freshmarket.order.entity.OrderItem;
 import com.freshmarket.order.enums.OrderStatus;
 import com.freshmarket.order.repository.OrderRepository;
@@ -17,7 +19,8 @@ import com.freshmarket.payment.event.PaymentSuccessEvent;
 import com.freshmarket.payment.event.PaymentCancelledEvent;
 import com.freshmarket.payment.service.PaymentService;
 import com.freshmarket.product.entity.Product;
-import com.freshmarket.product.repository.ProductRepository;
+import com.freshmarket.inventory.service.InventoryService;
+import com.freshmarket.inventory.service.InventoryService.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
@@ -43,13 +46,19 @@ public class OrderService {
     private static final Logger logger = LoggerFactory.getLogger(OrderService.class);
 
     private final OrderRepository orderRepository;
-    private final ProductRepository productRepository;
+    private final InventoryService inventoryService;
     private final PaymentService paymentService;
+    private final OrderEventReliabilityService reliabilityService;
+    private final OrderMapper orderMapper;
 
-    public OrderService(OrderRepository orderRepository, ProductRepository productRepository, PaymentService paymentService) {
+    public OrderService(OrderRepository orderRepository, InventoryService inventoryService, 
+                       PaymentService paymentService, OrderEventReliabilityService reliabilityService,
+                       OrderMapper orderMapper) {
         this.orderRepository = orderRepository;
-        this.productRepository = productRepository;
+        this.inventoryService = inventoryService;
         this.paymentService = paymentService;
+        this.reliabilityService = reliabilityService;
+        this.orderMapper = orderMapper;
     }
 
     /**
@@ -58,40 +67,51 @@ public class OrderService {
     public OrderResponse createOrder(Long userId, CreateOrderRequest request) {
         logger.debug("Creating order for user: {}", userId);
 
-        // 验证商品并获取商品信息
-        List<Long> productIds = request.getOrderItems().stream()
-                .map(item -> item.getProductId())
-                .toList();
+        // 1. 验证和检查库存
+        Map<Long, Integer> productQuantityMap = buildProductQuantityMap(request);
+        InventoryCheckResult checkResult = inventoryService.checkInventory(productQuantityMap);
         
-        List<Product> products = productRepository.findAllById(productIds);
-        if (products.size() != productIds.size()) {
-            throw new IllegalArgumentException("部分商品不存在或已下架");
+        if (!checkResult.allAvailable()) {
+            String errorMsg = String.join("; ", checkResult.unavailableReasons());
+            throw new IllegalArgumentException("订单创建失败: " + errorMsg);
         }
 
-        Map<Long, Product> productMap = products.stream()
-                .filter(Product::getActive)
-                .collect(Collectors.toMap(Product::getId, Function.identity()));
+        // 2. 创建订单实体
+        Order order = createOrderEntity(userId, request, checkResult.availableProducts());
 
-        if (productMap.size() != productIds.size()) {
-            throw new IllegalArgumentException("部分商品已下架，无法创建订单");
+        // 3. 预扣库存（原子操作）
+        List<InventoryReservation> reservations = buildInventoryReservations(request, checkResult.availableProducts());
+        InventoryReservationResult reservationResult = inventoryService.reserveStock(reservations);
+        
+        if (!reservationResult.success()) {
+            String errorMsg = String.join("; ", reservationResult.failures());
+            throw new IllegalStateException("库存预扣失败: " + errorMsg);
         }
 
-        // 检查库存
-        for (var orderItemRequest : request.getOrderItems()) {
-            Product product = productMap.get(orderItemRequest.getProductId());
-            if (product.getStock() < orderItemRequest.getQuantity()) {
-                throw new IllegalStateException(String.format("商品 %s 库存不足，可用库存：%d，需要：%d", 
-                        product.getName(), product.getStock(), orderItemRequest.getQuantity()));
-            }
-        }
+        // 4. 保存订单
+        Order savedOrder = orderRepository.save(order);
+        logger.info("Order created successfully with ID: {}, Order Number: {}", 
+                savedOrder.getId(), savedOrder.getOrderNumber());
 
-        // 创建订单
+        return orderMapper.toOrderResponse(savedOrder);
+    }
+
+    private Map<Long, Integer> buildProductQuantityMap(CreateOrderRequest request) {
+        return request.getOrderItems().stream()
+                .collect(Collectors.toMap(
+                        item -> item.getProductId(),
+                        item -> item.getQuantity(),
+                        Integer::sum // 处理同一商品多次添加的情况
+                ));
+    }
+
+    private Order createOrderEntity(Long userId, CreateOrderRequest request, Map<Long, Product> availableProducts) {
         Order order = new Order(userId, request.getShippingAddress(), request.getPhone());
         order.setNotes(request.getNotes());
 
         // 创建订单商品明细
         for (var orderItemRequest : request.getOrderItems()) {
-            Product product = productMap.get(orderItemRequest.getProductId());
+            Product product = availableProducts.get(orderItemRequest.getProductId());
             OrderItem orderItem = new OrderItem(
                     product.getId(),
                     product.getName(),
@@ -101,22 +121,21 @@ public class OrderService {
             order.addOrderItem(orderItem);
         }
 
-        // 预扣库存
-        for (var orderItemRequest : request.getOrderItems()) {
-            int updatedCount = productRepository.decreaseStock(
-                    orderItemRequest.getProductId(), 
-                    orderItemRequest.getQuantity()
-            );
-            if (updatedCount == 0) {
-                throw new IllegalStateException("库存扣减失败，可能存在并发问题");
-            }
-        }
+        return order;
+    }
 
-        Order savedOrder = orderRepository.save(order);
-        logger.info("Order created successfully with ID: {}, Order Number: {}", 
-                savedOrder.getId(), savedOrder.getOrderNumber());
-
-        return mapEntityToResponse(savedOrder);
+    private List<InventoryReservation> buildInventoryReservations(CreateOrderRequest request, Map<Long, Product> availableProducts) {
+        return request.getOrderItems().stream()
+                .map(orderItemRequest -> {
+                    Product product = availableProducts.get(orderItemRequest.getProductId());
+                    return new InventoryReservation(
+                            product.getId(),
+                            product.getName(),
+                            orderItemRequest.getQuantity(),
+                            product.getVersion()
+                    );
+                })
+                .toList();
     }
 
     /**
@@ -129,7 +148,7 @@ public class OrderService {
         Order order = orderRepository.findByUserIdAndId(userId, orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with id: " + orderId));
 
-        return mapEntityToResponse(order);
+        return orderMapper.toOrderResponse(order);
     }
 
     /**
@@ -142,7 +161,7 @@ public class OrderService {
         Order order = orderRepository.findByUserIdAndOrderNumber(userId, orderNumber)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found with number: " + orderNumber));
 
-        return mapEntityToResponse(order);
+        return orderMapper.toOrderResponse(order);
     }
 
     /**
@@ -162,7 +181,35 @@ public class OrderService {
                 pageable
         );
 
-        return orders.map(this::mapEntityToResponse);
+        return orders.map(orderMapper::toOrderResponse);
+    }
+
+    /**
+     * 搜索订单摘要（性能优化版本）
+     * 用于订单列表页面，只返回必要的信息，提升查询性能
+     */
+    @Transactional(readOnly = true)
+    public Page<OrderSummaryDto> searchOrderSummaries(Long userId, OrderSearchRequest searchRequest) {
+        logger.debug("Searching order summaries for user: {} with criteria: {}", userId, searchRequest);
+
+        Pageable pageable = createPageable(searchRequest);
+        return orderRepository.findOrderSummariesByComplexConditions(
+                userId,
+                searchRequest.getStatus(),
+                searchRequest.getStartTime(),
+                searchRequest.getEndTime(),
+                searchRequest.getOrderNumberKeyword(),
+                pageable
+        );
+    }
+
+    /**
+     * 获取用户订单摘要列表（性能优化版本）
+     */
+    @Transactional(readOnly = true)
+    public Page<OrderSummaryDto> getUserOrderSummaries(Long userId, Pageable pageable) {
+        logger.debug("Getting order summaries for user: {}", userId);
+        return orderRepository.findUserOrderSummaries(userId, pageable);
     }
 
     /**
@@ -199,10 +246,17 @@ public class OrderService {
             throw new IllegalStateException("当前订单状态无法取消");
         }
 
-        // 恢复库存
-        for (OrderItem orderItem : order.getOrderItems()) {
-            productRepository.increaseStock(orderItem.getProductId(), orderItem.getQuantity());
-        }
+        // 恢复库存 - 使用库存服务
+        List<InventoryReservation> reservationsToRestore = order.getOrderItems().stream()
+                .map(orderItem -> new InventoryReservation(
+                        orderItem.getProductId(),
+                        orderItem.getProductName(),
+                        orderItem.getQuantity(),
+                        null // 恢复库存时不需要版本检查
+                ))
+                .toList();
+
+        inventoryService.restoreStock(reservationsToRestore);
 
         order.setStatus(OrderStatus.CANCELLED);
         orderRepository.save(order);
@@ -253,40 +307,6 @@ public class OrderService {
 
     // 私有辅助方法
 
-    private OrderResponse mapEntityToResponse(Order order) {
-        OrderResponse response = new OrderResponse();
-        response.setId(order.getId());
-        response.setOrderNumber(order.getOrderNumber());
-        response.setUserId(order.getUserId());
-        response.setStatus(order.getStatus());
-        response.setTotalAmount(order.getTotalAmount());
-        response.setShippingAddress(order.getShippingAddress());
-        response.setPhone(order.getPhone());
-        response.setNotes(order.getNotes());
-        response.setCreatedAt(order.getCreatedAt());
-        response.setUpdatedAt(order.getUpdatedAt());
-
-        // 映射订单商品列表
-        List<OrderItemResponse> orderItemResponses = order.getOrderItems().stream()
-                .map(this::mapOrderItemToResponse)
-                .collect(Collectors.toList());
-        response.setOrderItems(orderItemResponses);
-
-        return response;
-    }
-
-    private OrderItemResponse mapOrderItemToResponse(OrderItem orderItem) {
-        OrderItemResponse response = new OrderItemResponse();
-        response.setId(orderItem.getId());
-        response.setProductId(orderItem.getProductId());
-        response.setProductName(orderItem.getProductName());
-        response.setProductPrice(orderItem.getProductPrice());
-        response.setQuantity(orderItem.getQuantity());
-        response.setSubtotal(orderItem.getSubtotal());
-        response.setCreatedAt(orderItem.getCreatedAt());
-        return response;
-    }
-
     private Pageable createPageable(OrderSearchRequest searchRequest) {
         Sort.Direction direction = "desc".equalsIgnoreCase(searchRequest.getSortDir()) 
                 ? Sort.Direction.DESC : Sort.Direction.ASC;
@@ -298,25 +318,19 @@ public class OrderService {
 
     /**
      * 监听支付成功事件，更新订单状态为已支付
+     * 使用可靠性服务确保最终一致性
      */
     @EventListener
-    @Transactional
     public void handlePaymentSuccess(PaymentSuccessEvent event) {
-        logger.info("Handling payment success event for order: {}, payment: {}", 
+        logger.info("Delegating payment success event to reliability service for order: {}, payment: {}", 
                 event.getOrderId(), event.getPaymentNumber());
         
         try {
-            Order order = orderRepository.findById(event.getOrderId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Order not found: " + event.getOrderId()));
-            
-            if (order.getStatus() == OrderStatus.PENDING) {
-                order.setStatus(OrderStatus.PAID);
-                orderRepository.save(order);
-                logger.info("Order {} status updated to PAID due to payment success", event.getOrderId());
-            }
+            reliabilityService.processPaymentSuccessReliably(event);
         } catch (Exception e) {
-            logger.error("Failed to handle payment success event for order: {}", event.getOrderId(), e);
-            // 这里可以考虑发布补偿事件或者加入重试队列
+            logger.error("Failed to delegate payment success event to reliability service for order: {}", 
+                    event.getOrderId(), e);
+            // 可靠性服务会处理重试和恢复，这里主要是记录委托失败的情况
         }
     }
 

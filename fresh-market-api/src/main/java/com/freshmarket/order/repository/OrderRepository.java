@@ -2,6 +2,7 @@ package com.freshmarket.order.repository;
 
 import com.freshmarket.order.entity.Order;
 import com.freshmarket.order.enums.OrderStatus;
+import com.freshmarket.order.dto.OrderSummaryDto;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -109,4 +110,51 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
      */
     @Query("SELECT o FROM Order o WHERE o.status = 'PENDING' AND o.createdAt < :timeoutTime")
     List<Order> findTimeoutPendingOrders(@Param("timeoutTime") Instant timeoutTime);
+
+    // =================== DTO 投影查询优化性能 ===================
+
+    /**
+     * 查询用户订单摘要列表（性能优化）
+     * 只返回列表页面所需的基本信息，避免加载完整的订单详情
+     */
+    @Query("SELECT new com.freshmarket.order.dto.OrderSummaryDto(o.id, o.orderNumber, o.userId, o.status, o.totalAmount, o.createdAt) " +
+           "FROM Order o WHERE o.userId = :userId")
+    Page<OrderSummaryDto> findUserOrderSummaries(@Param("userId") Long userId, Pageable pageable);
+
+    /**
+     * 根据状态查询用户订单摘要列表
+     */
+    @Query("SELECT new com.freshmarket.order.dto.OrderSummaryDto(o.id, o.orderNumber, o.userId, o.status, o.totalAmount, o.createdAt) " +
+           "FROM Order o WHERE o.userId = :userId AND o.status = :status")
+    Page<OrderSummaryDto> findUserOrderSummariesByStatus(@Param("userId") Long userId, @Param("status") OrderStatus status, Pageable pageable);
+
+    /**
+     * 复合条件查询订单摘要（性能优化）
+     */
+    @Query("SELECT new com.freshmarket.order.dto.OrderSummaryDto(o.id, o.orderNumber, o.userId, o.status, o.totalAmount, o.createdAt) " +
+           "FROM Order o WHERE " +
+           "(:userId IS NULL OR o.userId = :userId) AND " +
+           "(:status IS NULL OR o.status = :status) AND " +
+           "(:startTime IS NULL OR o.createdAt >= :startTime) AND " +
+           "(:endTime IS NULL OR o.createdAt <= :endTime) AND " +
+           "(:orderNumberKeyword IS NULL OR UPPER(o.orderNumber) LIKE UPPER(CONCAT('%', :orderNumberKeyword, '%')))")
+    Page<OrderSummaryDto> findOrderSummariesByComplexConditions(@Param("userId") Long userId,
+                                                               @Param("status") OrderStatus status,
+                                                               @Param("startTime") Instant startTime,
+                                                               @Param("endTime") Instant endTime,
+                                                               @Param("orderNumberKeyword") String orderNumberKeyword,
+                                                               Pageable pageable);
+
+    // =================== 订单状态原子性更新 ===================
+
+    /**
+     * 原子性更新订单状态（带条件检查）
+     * 只有当订单当前状态为expectedStatus时才会更新为newStatus
+     */
+    @Modifying
+    @Query("UPDATE Order o SET o.status = :newStatus, o.updatedAt = CURRENT_TIMESTAMP " +
+           "WHERE o.id = :orderId AND o.status = :expectedStatus")
+    int updateOrderStatusById(@Param("orderId") Long orderId, 
+                             @Param("newStatus") OrderStatus newStatus,
+                             @Param("expectedStatus") OrderStatus expectedStatus);
 }
