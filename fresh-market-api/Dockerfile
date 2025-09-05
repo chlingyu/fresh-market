@@ -17,7 +17,7 @@ COPY target/fresh-market-api-*.jar app.jar
 RUN mkdir -p /var/log
 
 # 设置JVM参数
-ENV JAVA_OPTS="-Xms512m -Xmx1024m -XX:+UseG1GC -XX:G1HeapRegionSize=16m -XX:+UseG1MixedGCCountTarget=16 -XX:+UnlockExperimentalVMOptions -XX:+UseZGC"
+ENV JAVA_OPTS="-Xms512m -Xmx1024m -XX:+UseG1GC -XX:G1HeapRegionSize=16m -XX:+UseStringDeduplication -XX:+OptimizeStringConcat -Dspring.profiles.active=prod"
 
 # 暴露端口
 EXPOSE 8080
