@@ -1,0 +1,44 @@
+# 开发环境配置
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/fresh_market_dev?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=GMT%2B8
+    username: freshmarket
+    password: freshmarket123
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+
+  jpa:
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        use_sql_comments: true
+
+  redis:
+    host: localhost
+    port: 6379
+    password: redis123
+
+# JWT配置 (开发环境使用较短的过期时间便于测试)
+jwt:
+  secret: fresh-market-dev-secret-key-2024-for-development
+  expiration: 3600000  # 1小时
+
+# 日志配置
+logging:
+  level:
+    root: INFO
+    com.freshmarket: DEBUG
+    org.springframework.security: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+  file:
+    name: logs/fresh-market-dev.log
+
+# 任务队列配置  
+task:
+  queue:
+    polling-interval: 3000  # 开发环境更短的轮询间隔
+    batch-size: 5
+    max-retry: 2

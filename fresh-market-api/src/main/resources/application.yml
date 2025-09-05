@@ -1,0 +1,148 @@
+server:
+  port: 8080
+  shutdown: graceful
+
+spring:
+  application:
+    name: fresh-market-api
+  
+  profiles:
+    active: local
+    
+  datasource:
+    url: jdbc:mysql://localhost:3306/fresh_market?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=GMT%2B8
+    username: freshmarket
+    password: freshmarket123
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      idle-timeout: 300000
+      connection-timeout: 20000
+      validation-timeout: 5000
+      max-lifetime: 1200000
+  
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+        format_sql: true
+        use_sql_comments: true
+        jdbc:
+          batch_size: 20
+        order_inserts: true
+        order_updates: true
+        
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+    baseline-version: 0
+    validate-on-migrate: true
+    
+  redis:
+    host: localhost
+    port: 6379
+    password: redis123
+    timeout: 2000ms
+    lettuce:
+      pool:
+        max-active: 20
+        max-idle: 8
+        min-idle: 2
+        max-wait: 2000ms
+        
+  jackson:
+    default-property-inclusion: NON_NULL
+    time-zone: GMT+8
+    date-format: yyyy-MM-dd HH:mm:ss
+
+# JWT配置
+jwt:
+  secret: ${JWT_SECRET:fresh-market-secret-key-2024-very-long-and-secure}
+  expiration: 86400000  # 24小时
+
+# 日志配置
+logging:
+  level:
+    root: INFO
+    com.freshmarket: DEBUG
+    org.springframework.security: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId:-}] %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId:-}] %logger{36} - %msg%n"
+  file:
+    name: /var/log/fresh-market.log
+
+# Actuator配置
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    export:
+      prometheus:
+        enabled: true
+
+# OpenAPI配置
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+  info:
+    title: Fresh Market API
+    description: 生鲜电商系统 RESTful API 文档
+    version: 1.0.0-SNAPSHOT
+    contact:
+      name: Fresh Market Team
+      email: contact@freshmarket.com
+
+# 任务队列配置  
+task:
+  queue:
+    polling-interval: 5000  # 轮询间隔(毫秒)
+    batch-size: 10         # 批处理大小
+    max-retry: 3           # 最大重试次数
+
+---
+# Docker环境配置
+spring:
+  config:
+    activate:
+      on-profile: docker
+  datasource:
+    url: jdbc:mysql://mysql:3306/fresh_market?useUnicode=true&characterEncoding=utf-8&useSSL=false&serverTimezone=GMT%2B8
+  redis:
+    host: redis
+
+logging:
+  file:
+    name: /app/logs/fresh-market.log
+
+---
+# 生产环境配置
+spring:
+  config:
+    activate:
+      on-profile: prod
+  jpa:
+    show-sql: false
+  flyway:
+    enabled: true
+
+logging:
+  level:
+    root: WARN
+    com.freshmarket: INFO

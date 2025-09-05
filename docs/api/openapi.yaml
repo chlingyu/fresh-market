@@ -1,0 +1,1009 @@
+openapi: 3.0.3
+info:
+  title: Fresh Market API
+  description: 生鲜电商系统 RESTful API 规范
+  version: 1.0.0-SNAPSHOT
+  contact:
+    name: Fresh Market Team
+    email: contact@freshmarket.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: 本地开发环境
+  - url: https://api.freshmarket.com/api/v1  
+    description: 生产环境
+
+paths:
+  # =============================================================================
+  # 用户模块 APIs
+  # =============================================================================
+  /users/register:
+    post:
+      summary: 用户注册
+      description: 创建新用户账号
+      operationId: registerUser
+      tags:
+        - 用户管理
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRegisterRequest'
+      responses:
+        '201':
+          description: 注册成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: 用户名或邮箱已存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /users/login:
+    post:
+      summary: 用户登录
+      description: 用户认证并获取访问令牌
+      operationId: loginUser
+      tags:
+        - 用户管理
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserLoginRequest'
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: 用户名或密码错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /users/profile:
+    get:
+      summary: 获取用户信息
+      description: 获取当前登录用户的详细信息
+      operationId: getUserProfile
+      tags:
+        - 用户管理
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          description: 未授权访问
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: 更新用户信息
+      description: 更新当前登录用户的信息
+      operationId: updateUserProfile
+      tags:
+        - 用户管理
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+
+  # =============================================================================
+  # 商品模块 APIs  
+  # =============================================================================
+  /products:
+    get:
+      summary: 获取商品列表
+      description: 分页获取商品列表，支持分类筛选和搜索
+      operationId: getProducts
+      tags:
+        - 商品管理
+      parameters:
+        - name: page
+          in: query
+          description: 页码(从0开始)
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+        - name: size
+          in: query
+          description: 每页数量
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: categoryId
+          in: query
+          description: 商品分类ID
+          schema:
+            type: integer
+            format: int64
+        - name: keyword
+          in: query
+          description: 搜索关键词
+          schema:
+            type: string
+            maxLength: 50
+        - name: sort
+          in: query
+          description: 排序方式
+          schema:
+            type: string
+            enum: [name, price, createTime]
+            default: createTime
+        - name: direction
+          in: query
+          description: 排序方向
+          schema:
+            type: string
+            enum: [ASC, DESC] 
+            default: DESC
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedProductResponse'
+
+  /products/{id}:
+    get:
+      summary: 获取商品详情
+      description: 根据商品ID获取商品详细信息
+      operationId: getProduct
+      tags:
+        - 商品管理
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 商品ID
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductDetailResponse'
+        '404':
+          description: 商品不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /categories:
+    get:
+      summary: 获取商品分类列表
+      description: 获取所有商品分类，支持层级结构
+      operationId: getCategories
+      tags:
+        - 商品管理
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CategoryResponse'
+
+  # =============================================================================
+  # 购物车模块 APIs
+  # =============================================================================
+  /cart:
+    get:
+      summary: 获取购物车
+      description: 获取当前用户的购物车内容
+      operationId: getCart
+      tags:
+        - 购物车管理
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartResponse'
+
+  /cart/items:
+    post:
+      summary: 添加商品到购物车
+      description: 将指定商品添加到用户购物车
+      operationId: addCartItem
+      tags:
+        - 购物车管理
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddCartItemRequest'
+      responses:
+        '201':
+          description: 添加成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartResponse'
+        '400':
+          description: 商品库存不足
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /cart/items/{id}:
+    put:
+      summary: 更新购物车商品数量
+      description: 修改购物车中指定商品的数量
+      operationId: updateCartItem
+      tags:
+        - 购物车管理
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 购物车项ID
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCartItemRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartResponse'
+
+    delete:
+      summary: 从购物车移除商品
+      description: 从购物车中删除指定商品
+      operationId: removeCartItem
+      tags:
+        - 购物车管理
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 购物车项ID
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: 删除成功
+        '404':
+          description: 购物车项不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # =============================================================================
+  # 订单模块 APIs
+  # =============================================================================
+  /orders:
+    post:
+      summary: 创建订单
+      description: 根据购物车内容或指定商品创建订单
+      operationId: createOrder
+      tags:
+        - 订单管理
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '201':
+          description: 订单创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+        '400':
+          description: 创建订单失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      summary: 获取用户订单列表
+      description: 分页获取当前用户的订单列表
+      operationId: getUserOrders
+      tags:
+        - 订单管理
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: 页码(从0开始)
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+        - name: size
+          in: query
+          description: 每页数量
+          schema:
+            type: integer
+            default: 10
+            minimum: 1
+            maximum: 50
+        - name: status
+          in: query
+          description: 订单状态筛选
+          schema:
+            $ref: '#/components/schemas/OrderStatus'
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedOrderResponse'
+
+  /orders/{id}:
+    get:
+      summary: 获取订单详情
+      description: 根据订单ID获取订单详细信息
+      operationId: getOrder
+      tags:
+        - 订单管理
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 订单ID
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: 获取成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDetailResponse'
+        '404':
+          description: 订单不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /orders/{id}/pay:
+    post:
+      summary: 支付订单
+      description: 对指定订单进行支付处理(模拟)
+      operationId: payOrder
+      tags:
+        - 订单管理
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: 订单ID
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PayOrderRequest'
+      responses:
+        '200':
+          description: 支付成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: 支付失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+# =============================================================================
+# 数据模型定义
+# =============================================================================
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # 通用响应模型
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: string
+          description: 错误码
+          example: "INVALID_REQUEST"
+        message:
+          type: string
+          description: 错误信息
+          example: "请求参数不正确"
+        timestamp:
+          type: string
+          format: date-time
+          description: 错误发生时间
+        path:
+          type: string
+          description: 请求路径
+          example: "/api/v1/users/register"
+      required:
+        - code
+        - message
+        - timestamp
+
+    PageInfo:
+      type: object
+      properties:
+        page:
+          type: integer
+          description: 当前页码
+          example: 0
+        size:
+          type: integer
+          description: 每页数量
+          example: 20
+        totalElements:
+          type: integer
+          format: int64
+          description: 总记录数
+          example: 100
+        totalPages:
+          type: integer
+          description: 总页数
+          example: 5
+        hasNext:
+          type: boolean
+          description: 是否有下一页
+        hasPrevious:
+          type: boolean
+          description: 是否有上一页
+
+    # 用户相关模型
+    UserRegisterRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          description: 用户名
+          minLength: 3
+          maxLength: 20
+          pattern: '^[a-zA-Z0-9_]+$'
+          example: "john_doe"
+        email:
+          type: string
+          format: email
+          description: 邮箱地址
+          example: "john@example.com"
+        password:
+          type: string
+          description: 密码
+          minLength: 6
+          maxLength: 50
+          example: "password123"
+        phone:
+          type: string
+          description: 手机号码
+          pattern: '^1[3-9]\d{9}$'
+          example: "13812345678"
+      required:
+        - username
+        - email
+        - password
+        - phone
+
+    UserLoginRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          description: 用户名或邮箱
+          example: "john_doe"
+        password:
+          type: string
+          description: 密码
+          example: "password123"
+      required:
+        - username
+        - password
+
+    UserUpdateRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          description: 邮箱地址
+        phone:
+          type: string
+          description: 手机号码
+          pattern: '^1[3-9]\d{9}$'
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 用户ID
+          example: 1
+        username:
+          type: string
+          description: 用户名
+          example: "john_doe"
+        email:
+          type: string
+          format: email
+          description: 邮箱地址
+          example: "john@example.com"
+        phone:
+          type: string
+          description: 手机号码
+          example: "13812345678"
+        createdAt:
+          type: string
+          format: date-time
+          description: 创建时间
+
+    LoginResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/UserResponse'
+        accessToken:
+          type: string
+          description: 访问令牌
+          example: "eyJhbGciOiJIUzI1NiIs..."
+        tokenType:
+          type: string
+          description: 令牌类型
+          example: "Bearer"
+        expiresIn:
+          type: integer
+          description: 令牌有效期(秒)
+          example: 86400
+
+    # 商品相关模型
+    ProductResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 商品ID
+          example: 1
+        name:
+          type: string
+          description: 商品名称
+          example: "有机苹果"
+        description:
+          type: string
+          description: 商品描述
+          example: "新鲜有机苹果，产地新疆"
+        price:
+          type: number
+          format: decimal
+          description: 商品价格
+          example: 12.50
+        stock:
+          type: integer
+          description: 库存数量
+          example: 100
+        imageUrl:
+          type: string
+          format: uri
+          description: 商品图片URL
+          example: "https://example.com/images/apple.jpg"
+        categoryId:
+          type: integer
+          format: int64
+          description: 分类ID
+          example: 1
+        categoryName:
+          type: string
+          description: 分类名称
+          example: "水果"
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+          description: 商品状态
+          example: "ACTIVE"
+
+    ProductDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/ProductResponse'
+        - type: object
+          properties:
+            createdAt:
+              type: string
+              format: date-time
+              description: 创建时间
+            updatedAt:
+              type: string
+              format: date-time
+              description: 更新时间
+
+    PagedProductResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductResponse'
+        page:
+          $ref: '#/components/schemas/PageInfo'
+
+    CategoryResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 分类ID
+          example: 1
+        name:
+          type: string
+          description: 分类名称
+          example: "水果"
+        parentId:
+          type: integer
+          format: int64
+          description: 父分类ID
+          nullable: true
+          example: null
+        sortOrder:
+          type: integer
+          description: 排序顺序
+          example: 1
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryResponse'
+          description: 子分类列表
+
+    # 购物车相关模型
+    AddCartItemRequest:
+      type: object
+      properties:
+        productId:
+          type: integer
+          format: int64
+          description: 商品ID
+          example: 1
+        quantity:
+          type: integer
+          description: 商品数量
+          minimum: 1
+          maximum: 999
+          example: 2
+      required:
+        - productId
+        - quantity
+
+    UpdateCartItemRequest:
+      type: object
+      properties:
+        quantity:
+          type: integer
+          description: 商品数量
+          minimum: 1
+          maximum: 999
+          example: 3
+      required:
+        - quantity
+
+    CartItemResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 购物车项ID
+          example: 1
+        productId:
+          type: integer
+          format: int64
+          description: 商品ID
+          example: 1
+        productName:
+          type: string
+          description: 商品名称
+          example: "有机苹果"
+        productImage:
+          type: string
+          format: uri
+          description: 商品图片
+          example: "https://example.com/images/apple.jpg"
+        price:
+          type: number
+          format: decimal
+          description: 商品单价
+          example: 12.50
+        quantity:
+          type: integer
+          description: 商品数量
+          example: 2
+        subtotal:
+          type: number
+          format: decimal
+          description: 小计金额
+          example: 25.00
+
+    CartResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CartItemResponse'
+        totalAmount:
+          type: number
+          format: decimal
+          description: 购物车总金额
+          example: 125.50
+        itemCount:
+          type: integer
+          description: 商品总数量
+          example: 8
+
+    # 订单相关模型
+    CreateOrderRequest:
+      type: object
+      properties:
+        addressId:
+          type: integer
+          format: int64
+          description: 收货地址ID
+          example: 1
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItemRequest'
+          description: 订单商品(为空时使用购物车商品)
+        remark:
+          type: string
+          description: 订单备注
+          maxLength: 200
+          example: "请送货上门"
+      required:
+        - addressId
+
+    OrderItemRequest:
+      type: object
+      properties:
+        productId:
+          type: integer
+          format: int64
+          description: 商品ID
+          example: 1
+        quantity:
+          type: integer
+          description: 购买数量
+          minimum: 1
+          maximum: 999
+          example: 2
+      required:
+        - productId
+        - quantity
+
+    OrderStatus:
+      type: string
+      enum: [CREATED, WAITING_PAYMENT, PAID, CANCELLED]
+      description: 订单状态
+
+    OrderItemResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 订单项ID
+          example: 1
+        productId:
+          type: integer
+          format: int64
+          description: 商品ID
+          example: 1
+        productName:
+          type: string
+          description: 商品名称
+          example: "有机苹果"
+        productImage:
+          type: string
+          format: uri
+          description: 商品图片
+          example: "https://example.com/images/apple.jpg"
+        price:
+          type: number
+          format: decimal
+          description: 商品单价
+          example: 12.50
+        quantity:
+          type: integer
+          description: 购买数量
+          example: 2
+        subtotal:
+          type: number
+          format: decimal
+          description: 小计金额
+          example: 25.00
+
+    OrderResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 订单ID
+          example: 1001
+        orderNo:
+          type: string
+          description: 订单号
+          example: "ORD202412051001"
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        totalAmount:
+          type: number
+          format: decimal
+          description: 订单总金额
+          example: 125.50
+        createdAt:
+          type: string
+          format: date-time
+          description: 创建时间
+        remark:
+          type: string
+          description: 订单备注
+          example: "请送货上门"
+
+    OrderDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/OrderResponse'
+        - type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/OrderItemResponse'
+            address:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: "张三"
+                phone:
+                  type: string
+                  example: "13812345678"
+                address:
+                  type: string
+                  example: "北京市朝阳区xxx路xxx号"
+
+    PagedOrderResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderResponse'
+        page:
+          $ref: '#/components/schemas/PageInfo'
+
+    PayOrderRequest:
+      type: object
+      properties:
+        paymentMethod:
+          type: string
+          enum: [WECHAT_PAY, ALIPAY, BANK_CARD]
+          description: 支付方式
+          example: "WECHAT_PAY"
+      required:
+        - paymentMethod
+
+    PaymentResponse:
+      type: object
+      properties:
+        orderId:
+          type: integer
+          format: int64
+          description: 订单ID
+          example: 1001
+        paymentId:
+          type: string
+          description: 支付流水号
+          example: "PAY202412051001001"
+        status:
+          type: string
+          enum: [SUCCESS, FAILED, PENDING]
+          description: 支付状态
+          example: "SUCCESS"
+        paymentMethod:
+          type: string
+          description: 支付方式
+          example: "WECHAT_PAY"
+        amount:
+          type: number
+          format: decimal
+          description: 支付金额
+          example: 125.50
+        paidAt:
+          type: string
+          format: date-time
+          description: 支付时间
