@@ -8,14 +8,14 @@ spring:
     
   jpa:
     hibernate:
-      ddl-auto: create-drop  # 测试时自动创建和删除表
+      ddl-auto: validate  # 与生产环境保持一致，验证schema
     show-sql: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.MySQLDialect
         
   flyway:
-    enabled: false  # 测试时禁用，使用Hibernate DDL
+    enabled: true  # 测试环境必须与生产环境保持一致
       
   redis:
     # 测试环境使用嵌入式Redis

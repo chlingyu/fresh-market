@@ -66,6 +66,9 @@ class OrderControllerTest {
 
     @MockBean
     private OrderService orderService;
+    
+    @MockBean
+    private com.freshmarket.security.JwtTokenProvider jwtTokenProvider;
 
     private OrderResponse testOrderResponse;
     private CreateOrderRequest createOrderRequest;

@@ -55,6 +55,9 @@ class PaymentControllerTest {
 
     @MockBean
     private PaymentService paymentService;
+    
+    @MockBean
+    private com.freshmarket.security.JwtTokenProvider jwtTokenProvider;
 
     private PaymentResponse testPaymentResponse;
     private CreatePaymentRequest createPaymentRequest;
