@@ -8,6 +8,9 @@ import com.freshmarket.product.entity.Product;
 import com.freshmarket.product.repository.ProductRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -53,6 +56,7 @@ public class ProductService {
     /**
      * 更新商品
      */
+    @CacheEvict(value = "products", key = "#productId")
     public ProductResponse updateProduct(Long productId, ProductRequest request) {
         logger.debug("Updating product with ID: {}", productId);
         
@@ -70,6 +74,7 @@ public class ProductService {
     /**
      * 根据ID获取商品详情
      */
+    @Cacheable(value = "products", key = "#productId")
     @Transactional(readOnly = true)
     public ProductResponse getProductById(Long productId) {
         logger.debug("Getting product by ID: {}", productId);

@@ -1,5 +1,6 @@
 package com.freshmarket.inventory.service.impl;
 
+import com.freshmarket.common.annotation.BusinessMetrics;
 import com.freshmarket.inventory.service.InventoryService;
 import com.freshmarket.product.entity.Product;
 import com.freshmarket.product.repository.ProductRepository;
@@ -75,6 +76,7 @@ public class InventoryServiceImpl implements InventoryService {
     }
 
     @Override
+    @BusinessMetrics(value = "business.inventory.reserve", description = "库存预留操作", recordTime = true)
     public InventoryReservationResult reserveStock(List<InventoryReservation> reservations) {
         logger.debug("Reserving stock for {} items", reservations.size());
 

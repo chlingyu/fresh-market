@@ -1,9 +1,7 @@
 package com.freshmarket.config;
 
 import com.freshmarket.common.dto.BaseResponse;
-import com.freshmarket.common.exception.BusinessException;
-import com.freshmarket.common.exception.DuplicateResourceException;
-import com.freshmarket.common.exception.ResourceNotFoundException;
+import com.freshmarket.common.exception.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -203,6 +201,50 @@ public class GlobalExceptionHandler {
         BaseResponse<Void> response = BaseResponse.error("INVALID_OPERATION", 
             message != null ? message : "操作状态无效");
         return ResponseEntity.badRequest().body(response);
+    }
+
+    /**
+     * 库存不足异常处理
+     */
+    @ExceptionHandler(InsufficientStockException.class)
+    public ResponseEntity<BaseResponse<Void>> handleInsufficientStockException(InsufficientStockException ex) {
+        logger.warn("Insufficient stock: {}", ex.getMessage());
+        
+        BaseResponse<Void> response = BaseResponse.error(ex.getErrorCode(), ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+    }
+
+    /**
+     * 支付处理异常
+     */
+    @ExceptionHandler(PaymentProcessingException.class)
+    public ResponseEntity<BaseResponse<Void>> handlePaymentProcessingException(PaymentProcessingException ex) {
+        logger.error("Payment processing failed: {}", ex.getMessage());
+        
+        BaseResponse<Void> response = BaseResponse.error(ex.getErrorCode(), ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
+    /**
+     * 购物车商品未找到异常处理
+     */
+    @ExceptionHandler(CartItemNotFoundException.class)
+    public ResponseEntity<BaseResponse<Void>> handleCartItemNotFoundException(CartItemNotFoundException ex) {
+        logger.warn("Cart item not found: {}", ex.getMessage());
+        
+        BaseResponse<Void> response = BaseResponse.error(ex.getErrorCode(), ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
+    }
+
+    /**
+     * 业务异常基类处理
+     */
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity<BaseResponse<Void>> handleBusinessException(BusinessException ex) {
+        logger.warn("Business exception: {}", ex.getMessage());
+        
+        BaseResponse<Void> response = BaseResponse.error(ex.getErrorCode(), ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 
     /**

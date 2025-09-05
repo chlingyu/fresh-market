@@ -4,6 +4,7 @@ import com.freshmarket.cart.dto.CartItemRequest;
 import com.freshmarket.cart.dto.CartItemResponse;
 import com.freshmarket.cart.dto.CartSummaryResponse;
 import com.freshmarket.cart.service.CartService;
+import com.freshmarket.common.annotation.RateLimit;
 import com.freshmarket.common.dto.BaseResponse;
 import com.freshmarket.security.SecurityUtils;
 import io.swagger.v3.oas.annotations.Operation;
@@ -45,6 +46,7 @@ public class CartController {
             @ApiResponse(responseCode = "409", description = "库存不足")
         }
     )
+    @RateLimit("cart-api")
     public BaseResponse<CartItemResponse> addToCart(@Valid @RequestBody CartItemRequest request) {
         Long userId = SecurityUtils.getCurrentUserId();
         CartItemResponse cartItem = cartService.addToCart(userId, request);

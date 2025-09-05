@@ -9,6 +9,9 @@ import com.freshmarket.common.exception.ResourceNotFoundException;
 import com.freshmarket.product.repository.ProductRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,6 +42,11 @@ public class CategoryService {
     /**
      * 创建分类
      */
+    @Caching(evict = {
+        @CacheEvict(value = "categories", key = "'tree'"),
+        @CacheEvict(value = "categories", key = "'all'"),
+        @CacheEvict(value = "categories", key = "'children:' + (#request.parentId != null ? #request.parentId : 'root')")
+    })
     public CategoryResponse createCategory(CategoryRequest request) {
         logger.debug("Creating category: {}", request.getName());
 
@@ -69,6 +77,9 @@ public class CategoryService {
     /**
      * 更新分类
      */
+    @Caching(evict = {
+        @CacheEvict(value = "categories", allEntries = true)
+    })
     public CategoryResponse updateCategory(Long categoryId, CategoryRequest request) {
         logger.debug("Updating category: {}", categoryId);
 
@@ -114,6 +125,9 @@ public class CategoryService {
     /**
      * 删除分类
      */
+    @Caching(evict = {
+        @CacheEvict(value = "categories", allEntries = true)
+    })
     public void deleteCategory(Long categoryId) {
         logger.debug("Deleting category: {}", categoryId);
 
@@ -151,17 +165,19 @@ public class CategoryService {
     /**
      * 获取分类树结构
      */
+    @Cacheable(value = "categories", key = "'tree'")
     @Transactional(readOnly = true)
     public List<CategoryResponse> getCategoryTree() {
         logger.debug("Getting category tree");
 
-        List<Category> rootCategories = categoryRepository.findByParentIdIsNullOrderBySortOrderAscNameAsc();
+        List<Category> rootCategories = categoryRepository.findRootCategoriesWithParent();
         return buildCategoryTree(rootCategories);
     }
 
     /**
      * 获取指定分类的子分类列表
      */
+    @Cacheable(value = "categories", key = "'children:' + (#parentId != null ? #parentId : 'root')")
     @Transactional(readOnly = true)
     public List<CategoryResponse> getChildCategories(Long parentId) {
         logger.debug("Getting child categories for parent: {}", parentId);
@@ -171,22 +187,25 @@ public class CategoryService {
             throw new ResourceNotFoundException("父分类不存在");
         }
 
-        List<Category> childCategories = categoryRepository.findByParentIdOrderBySortOrderAscNameAsc(parentId);
+        List<Category> childCategories = parentId == null ? 
+            categoryRepository.findRootCategoriesWithParent() :
+            categoryRepository.findByParentIdWithParentFetch(parentId);
         return childCategories.stream()
-                .map(this::mapToResponse)
+                .map(this::mapToResponseOptimized)
                 .collect(Collectors.toList());
     }
 
     /**
      * 获取所有分类列表（扁平结构）
      */
+    @Cacheable(value = "categories", key = "'all'")
     @Transactional(readOnly = true)
     public List<CategoryResponse> getAllCategories() {
         logger.debug("Getting all categories");
 
-        List<Category> categories = categoryRepository.findAllByOrderBySortOrderAscNameAsc();
+        List<Category> categories = categoryRepository.findAllWithParentFetch();
         return categories.stream()
-                .map(this::mapToResponse)
+                .map(this::mapToResponseOptimized)
                 .collect(Collectors.toList());
     }
 
@@ -278,6 +297,32 @@ public class CategoryService {
         return response;
     }
 
+    /**
+     * 优化版本的映射方法（避免N+1查询）
+     * 适用于已经预加载了parent关系的Category对象
+     */
+    private CategoryResponse mapToResponseOptimized(Category category) {
+        CategoryResponse response = new CategoryResponse();
+        response.setId(category.getId());
+        response.setName(category.getName());
+        response.setParentId(category.getParentId());
+        response.setSortOrder(category.getSortOrder());
+        response.setCreatedAt(category.getCreatedAt());
+
+        // 从预加载的关系中设置父分类名称（避免额外查询）
+        if (category.getParent() != null) {
+            response.setParentName(category.getParent().getName());
+        }
+
+        // 使用优化的层级计算
+        response.setLevel(calculateCategoryLevelOptimized(category));
+
+        // 设置是否有子分类
+        response.setHasChildren(categoryRepository.existsByParentId(category.getId()));
+
+        return response;
+    }
+
     private int calculateCategoryLevel(Category category) {
         int level = 1;
         Category current = category;
@@ -286,6 +331,26 @@ public class CategoryService {
             level++;
             current = categoryRepository.findById(current.getParentId()).orElse(null);
             if (current == null) break;
+        }
+        
+        return level;
+    }
+
+    /**
+     * 优化版本的层级计算（适用于预加载了parent关系的Category）
+     */
+    private int calculateCategoryLevelOptimized(Category category) {
+        int level = 1;
+        Category current = category;
+        
+        while (current.getParent() != null) {
+            level++;
+            current = current.getParent();
+            // 防止循环引用导致的无限循环
+            if (level > MAX_CATEGORY_LEVELS) {
+                logger.warn("Category level exceeded maximum: {}", level);
+                break;
+            }
         }
         
         return level;

@@ -105,6 +105,24 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
     List<Category> findCategoryTreeWithChildren();
 
     /**
+     * 查询根分类并预加载父分类信息（优化N+1查询）
+     */
+    @Query("SELECT DISTINCT c FROM Category c LEFT JOIN FETCH c.parent WHERE c.parentId IS NULL ORDER BY c.sortOrder ASC, c.name ASC")
+    List<Category> findRootCategoriesWithParent();
+
+    /**
+     * 查询指定父分类的子分类并预加载父分类信息
+     */
+    @Query("SELECT DISTINCT c FROM Category c LEFT JOIN FETCH c.parent WHERE c.parentId = :parentId ORDER BY c.sortOrder ASC, c.name ASC")
+    List<Category> findByParentIdWithParentFetch(@Param("parentId") Long parentId);
+
+    /**
+     * 查询所有分类并预加载父分类信息（优化N+1查询）
+     */
+    @Query("SELECT DISTINCT c FROM Category c LEFT JOIN FETCH c.parent ORDER BY c.sortOrder ASC, c.name ASC")
+    List<Category> findAllWithParentFetch();
+
+    /**
      * 根据名称模糊搜索分类
      */
     List<Category> findByNameContainingIgnoreCaseOrderBySortOrderAscNameAsc(String name);
